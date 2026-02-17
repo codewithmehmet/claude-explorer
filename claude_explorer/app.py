@@ -36,6 +36,7 @@ class ClaudeExplorer(App):
         Binding("l", "switch_tab('plans')", "Plans", show=True),
         Binding("t", "switch_tab('stats')", "Stats", show=True),
         Binding("escape", "go_back", "Back", show=True),
+        Binding("r", "refresh", "Refresh", show=True),
     ]
 
     def compose(self) -> ComposeResult:
@@ -64,6 +65,12 @@ class ClaudeExplorer(App):
         tabs = self.query_one("#main-tabs", TabbedContent)
         if tabs.active == "conversation":
             tabs.active = "sessions"
+
+    def action_refresh(self) -> None:
+        """Refresh data cache and reload current screen."""
+        from .data.cache import DataCache
+        DataCache().invalidate_all()
+        self.notify("Data refreshed!", severity="information")
 
     def on_session_selected(self, event: SessionSelected) -> None:
         """Handle session selection - switch to conversation view."""

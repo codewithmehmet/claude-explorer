@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+_HOME = str(Path.home())
+
 
 @dataclass
 class Prompt:
@@ -17,7 +19,7 @@ class Prompt:
 
     @property
     def project_short(self) -> str:
-        return self.project.replace("/home/mehmet/Projects/", "~/").replace("/home/mehmet/", "~/")
+        return self.project.replace(_HOME + "/Projects/", "").replace(_HOME + "/", "~/")
 
 
 @dataclass
@@ -45,7 +47,15 @@ class Session:
 
     @property
     def project_short(self) -> str:
-        return self.project.replace("/home/mehmet/Projects/", "").replace("/home/mehmet/", "~/ ").replace("-home-mehmet-Projects-", "").replace("-home-mehmet-", "~/")
+        home_encoded = _HOME.replace("/", "-")
+        return (self.project
+                .replace(_HOME + "/Projects/", "")
+                .replace(_HOME + "/", "~/")
+                .replace(home_encoded + "-Projects-", "")
+                .replace(home_encoded + "-", "~/")
+                .replace(home_encoded, "~/")
+                .lstrip("-")
+                .replace("~/-", "~/."))
 
     @property
     def duration_str(self) -> str:

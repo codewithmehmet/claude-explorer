@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -81,8 +80,14 @@ def discover_projects() -> list[Project]:
             continue
 
         name = entry.name
-        display = name.replace("-home-mehmet-Projects-", "").replace("-home-mehmet-", "~/")
-        if display == name:
+        home_encoded = str(Path.home()).replace("/", "-")
+        display = (name
+                   .replace(home_encoded + "-Projects-", "")
+                   .replace(home_encoded + "-", "~/")
+                   .replace(home_encoded, "~/")
+                   .lstrip("-")
+                   .replace("~/-", "~/."))
+        if not display:
             display = name
 
         jsonl_files = list(entry.glob("*.jsonl"))

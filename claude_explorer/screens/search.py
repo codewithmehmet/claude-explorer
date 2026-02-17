@@ -5,14 +5,13 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Container
 from textual.widgets import DataTable, Input, Static
+from textual import work
 
-from ..data.parsers import parse_history
+from ..data.cache import DataCache
 from ..data.models import Prompt
 
 
 class SearchScreen(Container):
-    """Search across all prompts and history."""
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._prompts: list[Prompt] = []
@@ -31,11 +30,13 @@ class SearchScreen(Container):
         table = self.query_one("#search-results-table", DataTable)
         table.cursor_type = "row"
         table.add_columns("Date", "Project", "Prompt")
+        # Pre-load in background
+        self._preload()
 
-    def _ensure_loaded(self) -> None:
-        if not self._loaded:
-            self._prompts = parse_history()
-            self._loaded = True
+    @work(thread=True)
+    def _preload(self) -> None:
+        self._prompts = DataCache().history()
+        self._loaded = True
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "search-input":
@@ -47,15 +48,15 @@ class SearchScreen(Container):
 
         if len(query) < 2:
             table.clear()
-            status.update(f"[#a6adc8]Type at least 2 characters to search ({len(self._prompts)} prompts loaded)[/]")
+            loaded = len(self._prompts) if self._loaded else "loading..."
+            status.update(f"[#a6adc8]Type at least 2 characters to search ({loaded} prompts)[/]")
             return
 
-        self._ensure_loaded()
+        if not self._loaded:
+            self._prompts = DataCache().history()
+            self._loaded = True
 
-        results = [
-            p for p in self._prompts
-            if query in p.text.lower()
-        ]
+        results = [p for p in self._prompts if query in p.text.lower()]
 
         table.clear()
         for p in results[:100]:
