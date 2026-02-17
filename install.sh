@@ -52,9 +52,9 @@ LAUNCHER
 chmod +x "$BIN_DIR/claude-explorer"
 
 # Ensure ~/.local/bin is in PATH
-if ! echo "$PATH" | tr ':' '\n' | grep -q "$HOME/.local/bin"; then
-    SHELL_RC="$HOME/.bashrc"
-    [ -f "$HOME/.zshrc" ] && SHELL_RC="$HOME/.zshrc"
+SHELL_RC="$HOME/.bashrc"
+[ -f "$HOME/.zshrc" ] && SHELL_RC="$HOME/.zshrc"
+if ! grep -qF 'export PATH="$HOME/.local/bin:$PATH"' "$SHELL_RC" 2>/dev/null; then
     echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$SHELL_RC"
     echo -e "${BLUE}Added ~/.local/bin to PATH in $(basename $SHELL_RC)${NC}"
 fi

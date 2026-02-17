@@ -7,7 +7,7 @@ from textual.containers import Container, Horizontal
 from textual.widgets import DataTable, Static, RichLog
 
 from ..data.parsers import parse_file_history, discover_all_sessions
-from ..data.models import Session
+from ..data.models import Session, escape_markup
 
 
 class FileHistoryScreen(Container):
@@ -103,4 +103,4 @@ class FileHistoryScreen(Container):
                 color = "#f38ba8"
             else:
                 color = "#cdd6f4"
-            log.write(f"  [{color}]{f}[/]")
+            log.write(f"  [{color}]{escape_markup(f)}[/]")

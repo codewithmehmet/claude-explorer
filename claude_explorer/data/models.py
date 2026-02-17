@@ -3,11 +3,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 _HOME = str(Path.home())
-_HOME_ENCODED = _HOME.replace("/", "-").lstrip("-")
+_HOME_ENCODED = _HOME.replace("/", "-")
+
+
+def escape_markup(text: str) -> str:
+    """Escape Rich markup brackets in user-derived text."""
+    return text.replace("[", "\\[").replace("]", "\\]")
+
+
+def format_size(size_bytes: int) -> str:
+    """Format a byte count as a human-readable size string."""
+    if size_bytes == 0:
+        return "0B"
+    if size_bytes > 1024 * 1024:
+        return f"{size_bytes / 1024 / 1024:.1f}MB"
+    if size_bytes > 1024:
+        return f"{size_bytes / 1024:.0f}KB"
+    return f"{size_bytes}B"
 
 
 def shorten_path(path: str) -> str:
@@ -87,7 +103,7 @@ class Session:
 
     @property
     def project_short(self) -> str:
-        return self.project
+        return self.project or shorten_project_dir(self.project_path)
 
     @property
     def duration_str(self) -> str:
@@ -103,9 +119,7 @@ class Session:
 
     @property
     def size_str(self) -> str:
-        if self.jsonl_size > 1024 * 1024:
-            return f"{self.jsonl_size / 1024 / 1024:.1f}MB"
-        return f"{self.jsonl_size / 1024:.0f}KB"
+        return format_size(self.jsonl_size)
 
 
 @dataclass
@@ -154,6 +168,4 @@ class Project:
 
     @property
     def size_str(self) -> str:
-        if self.total_size > 1024 * 1024:
-            return f"{self.total_size / 1024 / 1024:.1f}MB"
-        return f"{self.total_size / 1024:.0f}KB"
+        return format_size(self.total_size)

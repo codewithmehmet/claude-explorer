@@ -7,7 +7,7 @@ from textual.containers import Container, Horizontal
 from textual.widgets import DataTable, Static, MarkdownViewer
 
 from ..data.parsers import parse_plans, read_plan_content
-from ..data.models import Plan
+from ..data.models import Plan, format_size
 
 
 class PlansScreen(Container):
@@ -40,7 +40,7 @@ class PlansScreen(Container):
 
         for plan in self._plans:
             date_str = plan.modified.strftime("%Y-%m-%d") if plan.modified else "?"
-            size_str = f"{plan.size // 1024}KB" if plan.size > 1024 else f"{plan.size}B"
+            size_str = format_size(plan.size)
             table.add_row(plan.name, date_str, size_str, key=plan.name)
 
         if self._plans:

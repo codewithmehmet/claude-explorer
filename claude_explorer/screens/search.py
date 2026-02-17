@@ -7,6 +7,7 @@ from textual.containers import Container, Horizontal
 from textual.widgets import DataTable, Input, Static, Switch
 from textual.message import Message
 from textual.timer import Timer
+from textual.worker import Worker, WorkerState
 
 from ..data.parsers import parse_history, search_conversations, discover_all_sessions
 from ..data.models import Prompt, Session
@@ -29,6 +30,7 @@ class SearchScreen(Container):
         self._prompt_results: list[Prompt] = []
         self._deep_mode = False
         self._debounce_timer: Timer | None = None
+        self._search_worker: Worker | None = None
 
     def compose(self) -> ComposeResult:
         yield Static(
@@ -54,6 +56,13 @@ class SearchScreen(Container):
         label.styles.padding = (1, 0)
         sw = self.query_one("#deep-switch")
         sw.styles.width = 10
+
+    def on_unmount(self) -> None:
+        if self._debounce_timer:
+            self._debounce_timer.stop()
+            self._debounce_timer = None
+        if self._search_worker and self._search_worker.state == WorkerState.RUNNING:
+            self._search_worker.cancel()
 
     def _ensure_loaded(self) -> None:
         if not self._loaded:
@@ -111,27 +120,14 @@ class SearchScreen(Container):
         self._prompt_results = []
 
         if self._deep_mode:
+            # Cancel any previous deep search worker
+            if self._search_worker and self._search_worker.state == WorkerState.RUNNING:
+                self._search_worker.cancel()
+
             status.update("[#f9e2af]Searching conversations...[/]")
-            results = search_conversations(query, max_results=100)
-            self._deep_results = results
-
-            for i, r in enumerate(results):
-                session = r["session"]
-                date_str = session.last_activity.strftime("%Y-%m-%d %H:%M") if session.last_activity else "?"
-                snippet = r["snippet"][:120]
-                table.add_row(
-                    date_str,
-                    session.project_short,
-                    r["role"],
-                    snippet,
-                    key=str(i),
-                )
-
-            count = len(results)
-            status.update(
-                f"[#a6e3a1]{count} conversation matches[/]"
-                if count > 0
-                else "[#f38ba8]No matches in conversations[/]"
+            self._search_worker = self.run_worker(
+                lambda: search_conversations(query, max_results=100),
+                thread=True,
             )
         else:
             self._ensure_loaded()
@@ -150,6 +146,41 @@ class SearchScreen(Container):
                 if count > 0
                 else "[#f38ba8]No results[/]"
             )
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        """Handle deep search worker completion."""
+        if event.worker is not self._search_worker:
+            return
+        if event.state != WorkerState.SUCCESS:
+            if event.state == WorkerState.ERROR:
+                status = self.query_one("#search-status", Static)
+                status.update("[#f38ba8]Search failed[/]")
+            return
+
+        results = event.worker.result
+        self._deep_results = results
+        table = self.query_one("#search-results-table", DataTable)
+        table.clear()
+
+        for i, r in enumerate(results):
+            session = r["session"]
+            date_str = session.last_activity.strftime("%Y-%m-%d %H:%M") if session.last_activity else "?"
+            snippet = r["snippet"][:120]
+            table.add_row(
+                date_str,
+                session.project_short,
+                r["role"],
+                snippet,
+                key=str(i),
+            )
+
+        count = len(results)
+        status = self.query_one("#search-status", Static)
+        status.update(
+            f"[#a6e3a1]{count} conversation matches[/]"
+            if count > 0
+            else "[#f38ba8]No matches in conversations[/]"
+        )
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         """Open conversation when clicking a search result."""

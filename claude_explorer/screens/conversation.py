@@ -7,7 +7,7 @@ from textual.containers import Container
 from textual.widgets import Static, RichLog, Button
 from textual.message import Message
 
-from ..data.models import Session
+from ..data.models import Session, escape_markup
 from ..data.parsers import parse_session_transcript
 
 
@@ -75,19 +75,15 @@ class ConversationScreen(Container):
             if msg.role == "user":
                 log.write(f"{ts_str}[bold #89b4fa]YOU:[/]")
                 for line in msg.content.split("\n"):
-                    log.write(f"  [#cdd6f4]{_escape(line)}[/]")
+                    log.write(f"  [#cdd6f4]{escape_markup(line)}[/]")
                 log.write("")
             elif msg.role == "assistant":
                 log.write(f"{ts_str}[bold #a6e3a1]CLAUDE:[/]")
                 for line in msg.content.split("\n"):
-                    log.write(f"  [#bac2de]{_escape(line)}[/]")
+                    log.write(f"  [#bac2de]{escape_markup(line)}[/]")
                 log.write("")
             elif msg.role == "tool":
-                log.write(f"  {ts_str}[#cba6f7]{_escape(msg.content)}[/]")
+                log.write(f"  {ts_str}[#cba6f7]{escape_markup(msg.content)}[/]")
             elif msg.role == "system":
-                log.write(f"  {ts_str}[#f9e2af]{_escape(msg.content)}[/]")
+                log.write(f"  {ts_str}[#f9e2af]{escape_markup(msg.content)}[/]")
                 log.write("")
-
-
-def _escape(text: str) -> str:
-    return text.replace("[", "\\[").replace("]", "\\]")

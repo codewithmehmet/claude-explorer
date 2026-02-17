@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import re
+import sys
 from pathlib import Path
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import Footer, TabbedContent, TabPane
 
+from .data.models import Session
 from .screens.dashboard import DashboardScreen
 from .screens.sessions import SessionsScreen, SessionSelected
 from .screens.conversation import ConversationScreen, ExportRequested
@@ -20,6 +23,14 @@ from .screens.file_history import FileHistoryScreen
 
 
 CSS_PATH = Path(__file__).parent / "styles" / "app.tcss"
+
+
+def _safe_filename(name: str) -> str:
+    """Sanitize a string for use as a filename."""
+    name = name.replace("/", "-").replace("\\", "-").replace(" ", "-")
+    name = name.replace("..", "")
+    name = re.sub(r'[^\w\-.]', '_', name)
+    return name[:200] or "unnamed"
 
 
 class ClaudeExplorer(App):
@@ -98,8 +109,10 @@ class ClaudeExplorer(App):
             self.query_one(StatsScreen).load_stats()
         elif active == "file-history":
             self.query_one(FileHistoryScreen).load_data()
+        elif active == "plans":
+            self.query_one(PlansScreen).load_plans()
 
-    def _open_session(self, session) -> None:
+    def _open_session(self, session: Session) -> None:
         """Open a session in the conversation viewer."""
         tabs = self.query_one("#main-tabs", TabbedContent)
         tabs.get_tab("conversation").display = True
@@ -127,8 +140,12 @@ class ClaudeExplorer(App):
             export_dir = Path.home() / "claude-exports"
             export_dir.mkdir(exist_ok=True)
             date_str = event.session.last_activity.strftime("%Y%m%d-%H%M") if event.session.last_activity else "unknown"
-            filename = f"{event.session.project_short}-{date_str}.md".replace("/", "-").replace(" ", "-")
-            export_path = export_dir / filename
+            filename = f"{_safe_filename(event.session.project_short)}-{date_str}.md"
+            export_path = (export_dir / filename).resolve()
+            # Ensure export stays within export_dir
+            if not str(export_path).startswith(str(export_dir.resolve())):
+                self.notify("Invalid export path", title="Error", severity="error")
+                return
             export_path.write_text(content, encoding="utf-8")
             self.notify(f"Exported to {export_path}", title="Export")
 
@@ -141,7 +158,14 @@ def main():
 
     if args.path:
         import claude_explorer.data.parsers as parsers_mod
-        parsers_mod.CLAUDE_DIR = Path(args.path)
+        target = Path(args.path).resolve()
+        if not target.is_dir():
+            print(f"Error: {target} is not a directory", file=sys.stderr)
+            sys.exit(1)
+        expected_markers = ["history.jsonl", "projects"]
+        if not any((target / m).exists() for m in expected_markers):
+            print(f"Warning: {target} does not appear to be a .claude directory", file=sys.stderr)
+        parsers_mod.CLAUDE_DIR = target
 
     app = ClaudeExplorer()
     app.run()

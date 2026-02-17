@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import (
@@ -113,7 +113,7 @@ def _parse_history() -> list[Prompt]:
                 ts = data.get("timestamp", 0)
                 prompts.append(Prompt(
                     text=data.get("display", ""),
-                    timestamp=datetime.fromtimestamp(ts / 1000) if ts else datetime.min,
+                    timestamp=datetime.fromtimestamp(ts / 1000, tz=timezone.utc) if ts else datetime.min.replace(tzinfo=timezone.utc),
                     project=data.get("project", "unknown"),
                     session_id=data.get("sessionId", ""),
                 ))
@@ -128,7 +128,7 @@ def _parse_stats() -> list[DailyStats]:
         return []
 
     try:
-        with open(stats_file, "r") as f:
+        with open(stats_file, "r", encoding="utf-8", errors="replace") as f:
             data = json.load(f)
     except (json.JSONDecodeError, ValueError):
         return []
@@ -170,9 +170,9 @@ def _discover_projects() -> list[Project]:
                 project_path=name,
                 jsonl_path=jf,
                 jsonl_size=stat.st_size,
-                last_activity=datetime.fromtimestamp(stat.st_mtime),
+                last_activity=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
             ))
-        sessions.sort(key=lambda s: s.last_activity or datetime.min, reverse=True)
+        sessions.sort(key=lambda s: s.last_activity or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
         projects.append(Project(
             name=name,
@@ -203,7 +203,7 @@ def _discover_all_sessions(history: list[Prompt], projects: list[Project]) -> li
                     session.last_activity = ts_from_prompts
             sessions.append(session)
 
-    return sorted(sessions, key=lambda s: s.last_activity or datetime.min, reverse=True)
+    return sorted(sessions, key=lambda s: s.last_activity or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
 
 def parse_session_transcript(jsonl_path: Path, max_messages: int = 500) -> list[SessionMessage]:
@@ -352,7 +352,14 @@ def search_conversations(query: str, max_results: int = 50) -> list[dict]:
                         msg = data.get("message", {})
                         if isinstance(msg, dict):
                             c = msg.get("content", "")
-                            text = c if isinstance(c, str) else ""
+                            if isinstance(c, str):
+                                text = c
+                            elif isinstance(c, list):
+                                for p in c:
+                                    if isinstance(p, dict) and p.get("type") == "text":
+                                        text += p.get("text", "") + " "
+                                    elif isinstance(p, str):
+                                        text += p + " "
                     elif msg_type == "assistant":
                         msg = data.get("message", {})
                         if isinstance(msg, dict):
@@ -456,10 +463,10 @@ def parse_plans() -> list[Plan]:
         plans.append(Plan(
             name=f.stem.replace("-", " ").title(),
             path=f,
-            modified=datetime.fromtimestamp(stat.st_mtime),
+            modified=datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc),
             size=stat.st_size,
         ))
-    return sorted(plans, key=lambda p: p.modified or datetime.min, reverse=True)
+    return sorted(plans, key=lambda p: p.modified or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
 
 
 def read_plan_content(plan: Plan) -> str:

@@ -4,52 +4,17 @@ Screen {
     background: $surface;
 }
 
-/* Header */
-#app-header {
-    dock: top;
-    height: 3;
-    background: #6c3baa;
-    color: #ffffff;
-    text-align: center;
-    padding: 1;
-    text-style: bold;
-}
-
-/* Navigation tabs */
-#nav-bar {
-    dock: top;
-    height: 1;
-    background: #1e1e2e;
-}
-
 /* Footer */
 Footer {
     background: #1e1e2e;
 }
 
 /* Dashboard */
-#dashboard-grid {
-    layout: grid;
-    grid-size: 3 2;
-    grid-gutter: 1;
-    padding: 1;
-    height: 100%;
-}
-
 .stat-box {
     border: round #6c3baa;
     padding: 1;
     height: 100%;
     background: #1e1e2e;
-}
-
-.stat-box .stat-value {
-    text-style: bold;
-    color: #cba6f7;
-}
-
-.stat-box .stat-label {
-    color: #a6adc8;
 }
 
 #activity-chart {
@@ -60,224 +25,72 @@ Footer {
     height: 100%;
 }
 
-/* Sessions list */
-#sessions-container {
-    height: 100%;
-}
-
+/* Sessions */
 #session-filter {
     dock: top;
     height: 3;
     padding: 0 1;
 }
 
-#sessions-list {
-    height: 1fr;
-}
-
-.session-row {
-    height: 3;
-    padding: 0 1;
-    border-bottom: solid #313244;
-}
-
-.session-row:hover {
-    background: #313244;
-}
-
-.session-row:focus {
-    background: #45475a;
-}
-
-.session-row .session-date {
-    color: #cba6f7;
-    width: 18;
-}
-
-.session-row .session-project {
-    color: #89b4fa;
-    width: 25;
-}
-
-.session-row .session-id {
-    color: #a6adc8;
-    width: 12;
-}
-
-.session-row .session-size {
-    color: #f9e2af;
-    width: 10;
-}
-
-/* Conversation viewer */
-#conversation-container {
-    height: 100%;
-    padding: 0;
-}
-
-#conversation-header {
-    dock: top;
-    height: 3;
-    background: #1e1e2e;
-    padding: 0 2;
-    border-bottom: solid #6c3baa;
-}
-
+/* Conversation */
 #conversation-log {
     height: 1fr;
     padding: 1;
     scrollbar-size: 1 1;
 }
 
-.msg-user {
-    background: #1e3a5f;
-    margin: 1 0;
-    padding: 1 2;
-    border-left: thick #89b4fa;
+#back-to-sessions {
+    dock: top;
+    width: auto;
+    margin: 0 1;
 }
 
-.msg-assistant {
-    background: #1e1e2e;
-    margin: 1 0;
-    padding: 1 2;
-    border-left: thick #a6e3a1;
-}
-
-.msg-tool {
-    background: #2a2040;
-    margin: 0;
-    padding: 0 2;
-    color: #cba6f7;
-    text-style: italic;
-    height: auto;
-}
-
-.msg-system {
-    background: #332200;
-    margin: 1 0;
-    padding: 0 2;
-    color: #f9e2af;
-    text-style: italic;
+#export-btn {
+    dock: top;
+    width: auto;
+    margin: 0 1;
 }
 
 /* Search */
-#search-container {
-    height: 100%;
-}
-
-#search-input-box {
-    dock: top;
+#search-controls {
     height: 3;
-    padding: 0 1;
+    dock: top;
 }
 
-#search-results {
-    height: 1fr;
-    padding: 1;
+#search-controls Input {
+    width: 1fr;
 }
 
-.search-result {
-    margin: 1 0;
-    padding: 1;
-    border: round #45475a;
+#deep-label {
+    width: 7;
+    padding: 1 0;
+    color: #f9e2af;
 }
 
-.search-result:hover {
-    border: round #6c3baa;
-}
-
-.search-result .result-date {
-    color: #cba6f7;
-}
-
-.search-result .result-project {
-    color: #89b4fa;
-}
-
-.search-result .result-text {
-    color: #cdd6f4;
-}
-
-/* Projects */
-#projects-container {
-    height: 100%;
-    padding: 1;
-}
-
-.project-card {
-    margin: 1 0;
-    padding: 1 2;
-    border: round #45475a;
-    height: auto;
-}
-
-.project-card:hover {
-    border: round #6c3baa;
-    background: #1e1e2e;
-}
-
-.project-card .project-name {
-    text-style: bold;
-    color: #89b4fa;
-}
-
-.project-card .project-info {
-    color: #a6adc8;
+#deep-switch {
+    width: 10;
 }
 
 /* Plans */
-#plans-container {
-    layout: horizontal;
-    height: 100%;
-}
-
-#plans-list-panel {
-    width: 35;
-    border-right: solid #45475a;
-}
-
-#plan-content-panel {
-    width: 1fr;
-    padding: 1 2;
-}
-
-.plan-item {
-    padding: 1 2;
-    height: 3;
-    border-bottom: solid #313244;
-}
-
-.plan-item:hover {
-    background: #313244;
-}
-
-.plan-item:focus {
-    background: #45475a;
-}
-
-/* Stats */
-#stats-container {
-    height: 100%;
-    padding: 1;
-}
-
-#stats-chart-area {
-    height: 14;
-    border: round #6c3baa;
-    padding: 1;
-    background: #1e1e2e;
-}
-
-#stats-table-area {
+#plans-layout {
     height: 1fr;
-    margin-top: 1;
 }
 
-/* Generic */
-.hidden {
-    display: none;
+/* File History */
+#fh-layout {
+    height: 1fr;
 }
 
+#fh-sessions-table {
+    width: 50;
+}
+
+#fh-files-log {
+    width: 1fr;
+    padding: 1;
+}
+
+/* Generic widget styles */
 DataTable {
     height: 1fr;
 }
@@ -313,64 +126,6 @@ RichLog {
     scrollbar-size: 1 1;
 }
 
-/* Loading indicator */
-LoadingIndicator {
-    color: #cba6f7;
-}
-
-/* Markdown */
 MarkdownViewer {
     padding: 1;
-}
-
-/* File History */
-#fh-layout {
-    height: 1fr;
-}
-
-#fh-sessions-table {
-    width: 50;
-}
-
-#fh-files-log {
-    width: 1fr;
-    padding: 1;
-}
-
-/* Search controls */
-#search-controls {
-    height: 3;
-    dock: top;
-}
-
-#search-controls Input {
-    width: 1fr;
-}
-
-#deep-label {
-    width: 7;
-    padding: 1 0;
-    color: #f9e2af;
-}
-
-#deep-switch {
-    width: 10;
-}
-
-/* Conversation buttons */
-#back-to-sessions {
-    dock: top;
-    width: auto;
-    margin: 0 1;
-}
-
-#export-btn {
-    dock: top;
-    width: auto;
-    margin: 0 1;
-}
-
-/* Plans layout */
-#plans-layout {
-    height: 1fr;
 }
