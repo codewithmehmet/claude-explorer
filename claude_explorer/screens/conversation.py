@@ -4,15 +4,22 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Static, RichLog, Button, LoadingIndicator
-from textual.worker import Worker, WorkerState
-from textual import work
+from textual.widgets import Static, RichLog, Button
+from textual.message import Message
 
-from ..data.models import Session, SessionMessage
+from ..data.models import Session
 from ..data.parsers import parse_session_transcript
 
 
+class ExportRequested(Message):
+    def __init__(self, session: Session) -> None:
+        super().__init__()
+        self.session = session
+
+
 class ConversationScreen(Container):
+    """View a session's conversation."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._current_session: Session | None = None
@@ -24,14 +31,14 @@ class ConversationScreen(Container):
             id="conv-title",
         )
         yield Button("< Back to Sessions", id="back-to-sessions", variant="default")
-        yield LoadingIndicator(id="conv-loading")
+        yield Button("Export as Markdown", id="export-btn", variant="primary")
         yield RichLog(id="conversation-log", wrap=True, markup=True, highlight=True)
 
-    def on_mount(self) -> None:
-        try:
-            self.query_one("#conv-loading").display = False
-        except Exception:
-            pass
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back-to-sessions":
+            self.app.action_go_back()
+        elif event.button.id == "export-btn" and self._current_session:
+            self.post_message(ExportRequested(self._current_session))
 
     def load_session(self, session: Session) -> None:
         self._current_session = session
@@ -49,28 +56,7 @@ class ConversationScreen(Container):
             log.write("[#f38ba8]No session data file found.[/]")
             return
 
-        try:
-            self.query_one("#conv-loading").display = True
-        except Exception:
-            pass
-
-        self._load_transcript(session)
-
-    @work(thread=True)
-    def _load_transcript(self, session: Session) -> list[SessionMessage]:
-        return parse_session_transcript(session.jsonl_path)
-
-    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        if event.state == WorkerState.SUCCESS:
-            try:
-                self.query_one("#conv-loading").display = False
-            except Exception:
-                pass
-            self._render_messages(event.worker.result)
-
-    def _render_messages(self, messages: list[SessionMessage]) -> None:
-        log = self.query_one("#conversation-log", RichLog)
-        session = self._current_session
+        messages = parse_session_transcript(session.jsonl_path)
 
         if not messages:
             log.write("[#a6adc8]No messages found in this session.[/]")
@@ -101,10 +87,6 @@ class ConversationScreen(Container):
             elif msg.role == "system":
                 log.write(f"  {ts_str}[#f9e2af]{_escape(msg.content)}[/]")
                 log.write("")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "back-to-sessions":
-            self.app.action_switch_tab("sessions")
 
 
 def _escape(text: str) -> str:

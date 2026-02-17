@@ -4,12 +4,10 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import DataTable, Input, Static, LoadingIndicator
+from textual.widgets import DataTable, Input, Static
 from textual.message import Message
-from textual.worker import Worker, WorkerState
-from textual import work
 
-from ..data.cache import DataCache
+from ..data.parsers import discover_all_sessions
 from ..data.models import Session
 
 
@@ -20,6 +18,8 @@ class SessionSelected(Message):
 
 
 class SessionsScreen(Container):
+    """Browse all sessions across projects."""
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._sessions: list[Session] = []
@@ -27,33 +27,30 @@ class SessionsScreen(Container):
 
     def compose(self) -> ComposeResult:
         yield Static(
-            "[bold #cba6f7]  SESSIONS[/] [#a6adc8]- Browse all Claude sessions[/]",
+            "[bold #cba6f7]  SESSIONS[/] [#a6adc8]- Browse all Claude sessions (Enter to view)[/]",
             markup=True,
         )
-        yield Input(placeholder="Filter sessions (type to search by project or date)...", id="session-filter")
-        yield LoadingIndicator(id="sessions-loading")
+        yield Input(placeholder="Filter by project, date, or session ID...", id="session-filter")
         yield DataTable(id="sessions-table")
 
     def on_mount(self) -> None:
-        self.load_data()
+        self.load_sessions()
 
-    @work(thread=True)
-    def load_data(self) -> list[Session]:
-        return DataCache().sessions()
+    def load_sessions(self) -> None:
+        table = self.query_one("#sessions-table", DataTable)
+        table.clear(columns=True)
+        table.cursor_type = "row"
+        table.add_columns("Date", "Project", "Session ID", "Size", "Prompts", "Duration")
 
-    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        if event.state == WorkerState.SUCCESS:
-            self._sessions = event.worker.result
-            self._filtered = self._sessions[:]
-            try:
-                self.query_one("#sessions-loading").remove()
-            except Exception:
-                pass
-            table = self.query_one("#sessions-table", DataTable)
-            table.clear(columns=True)
-            table.cursor_type = "row"
-            table.add_columns("Date", "Project", "Session ID", "Size", "Prompts", "Duration")
-            self._populate_table()
+        self._sessions = discover_all_sessions()
+        self._filtered = self._sessions[:]
+        self._populate_table()
+
+    def filter_by_project(self, project_name: str) -> None:
+        """Filter sessions to show only those from a specific project."""
+        fi = self.query_one("#session-filter", Input)
+        fi.value = project_name
+        # The on_input_changed handler will trigger filtering
 
     def _populate_table(self) -> None:
         table = self.query_one("#sessions-table", DataTable)

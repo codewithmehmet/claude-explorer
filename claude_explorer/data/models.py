@@ -7,6 +7,32 @@ from datetime import datetime
 from pathlib import Path
 
 _HOME = str(Path.home())
+_HOME_ENCODED = _HOME.replace("/", "-").lstrip("-")
+
+
+def shorten_path(path: str) -> str:
+    """Replace the user's home directory with ~/ in a path."""
+    home_slash = _HOME + "/"
+    if path.startswith(home_slash):
+        return "~/" + path[len(home_slash):]
+    if path == _HOME:
+        return "~"
+    return path
+
+
+def shorten_project_dir(name: str) -> str:
+    """Convert a .claude project directory name to a readable name."""
+    prefix_projects = _HOME_ENCODED + "-Projects-"
+    prefix_home = _HOME_ENCODED + "-"
+    if name.startswith(prefix_projects):
+        result = name[len(prefix_projects):]
+        return result if result else "Projects"
+    if name.startswith(prefix_home):
+        suffix = name[len(prefix_home):]
+        return "~/" + suffix.replace("-", "/", 1) if suffix else "~"
+    if name == _HOME_ENCODED:
+        return "~"
+    return name
 
 
 @dataclass
@@ -19,17 +45,17 @@ class Prompt:
 
     @property
     def project_short(self) -> str:
-        return self.project.replace(_HOME + "/Projects/", "").replace(_HOME + "/", "~/")
+        return shorten_path(self.project)
 
 
 @dataclass
 class SessionMessage:
     """A message within a session transcript."""
-    role: str  # 'user', 'assistant', 'system', 'tool_result', 'tool_use'
+    role: str
     content: str
     timestamp: datetime | None = None
     tool_name: str | None = None
-    message_type: str | None = None  # 'say', 'tool_use', 'tool_result', etc.
+    message_type: str | None = None
 
 
 @dataclass
@@ -47,15 +73,7 @@ class Session:
 
     @property
     def project_short(self) -> str:
-        home_encoded = _HOME.replace("/", "-")
-        return (self.project
-                .replace(_HOME + "/Projects/", "")
-                .replace(_HOME + "/", "~/")
-                .replace(home_encoded + "-Projects-", "")
-                .replace(home_encoded + "-", "~/")
-                .replace(home_encoded, "~/")
-                .lstrip("-")
-                .replace("~/-", "~/."))
+        return self.project
 
     @property
     def duration_str(self) -> str:
@@ -86,6 +104,21 @@ class DailyStats:
 
 
 @dataclass
+class GlobalStats:
+    """Aggregate stats for the dashboard."""
+    total_messages: int = 0
+    total_sessions: int = 0
+    total_tools: int = 0
+    total_prompts: int = 0
+    total_projects: int = 0
+    total_data_bytes: int = 0
+    first_date: str = "?"
+    last_date: str = "?"
+    active_days: int = 0
+    daily_stats: list[DailyStats] = field(default_factory=list)
+
+
+@dataclass
 class Plan:
     """A plan document."""
     name: str
@@ -110,18 +143,3 @@ class Project:
         if self.total_size > 1024 * 1024:
             return f"{self.total_size / 1024 / 1024:.1f}MB"
         return f"{self.total_size / 1024:.0f}KB"
-
-
-@dataclass
-class TodoItem:
-    """A todo item."""
-    session_id: str
-    content: str
-
-
-@dataclass
-class FileChange:
-    """A file changed in a session."""
-    session_id: str
-    file_path: str
-    timestamp: datetime | None = None

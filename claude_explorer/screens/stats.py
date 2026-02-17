@@ -4,12 +4,9 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import DataTable, Static, RichLog, LoadingIndicator
-from textual.worker import Worker, WorkerState
-from textual import work
+from textual.widgets import DataTable, Static, RichLog
 
-from ..data.cache import DataCache
-from ..data.models import DailyStats
+from ..data.parsers import parse_stats
 
 
 def make_bar(value: int, max_value: int, width: int = 30) -> str:
@@ -20,31 +17,22 @@ def make_bar(value: int, max_value: int, width: int = 30) -> str:
 
 
 class StatsScreen(Container):
+    """Detailed stats and activity charts."""
+
     def compose(self) -> ComposeResult:
         yield Static(
             "[bold #cba6f7]  STATS[/] [#a6adc8]- Detailed activity statistics[/]",
             markup=True,
         )
-        yield LoadingIndicator(id="stats-loading")
         yield RichLog(id="stats-chart", wrap=True, markup=True)
         yield DataTable(id="stats-detail-table")
 
     def on_mount(self) -> None:
-        self.load_data()
+        self.load_stats()
 
-    @work(thread=True)
-    def load_data(self) -> list[DailyStats]:
-        return DataCache().stats()
+    def load_stats(self) -> None:
+        stats = parse_stats()
 
-    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        if event.state == WorkerState.SUCCESS:
-            try:
-                self.query_one("#stats-loading").remove()
-            except Exception:
-                pass
-            self._render_stats(event.worker.result)
-
-    def _render_stats(self, stats: list[DailyStats]) -> None:
         chart = self.query_one("#stats-chart", RichLog)
         chart.clear()
         chart.styles.height = 20

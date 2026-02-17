@@ -322,3 +322,55 @@ LoadingIndicator {
 MarkdownViewer {
     padding: 1;
 }
+
+/* File History */
+#fh-layout {
+    height: 1fr;
+}
+
+#fh-sessions-table {
+    width: 50;
+}
+
+#fh-files-log {
+    width: 1fr;
+    padding: 1;
+}
+
+/* Search controls */
+#search-controls {
+    height: 3;
+    dock: top;
+}
+
+#search-controls Input {
+    width: 1fr;
+}
+
+#deep-label {
+    width: 7;
+    padding: 1 0;
+    color: #f9e2af;
+}
+
+#deep-switch {
+    width: 10;
+}
+
+/* Conversation buttons */
+#back-to-sessions {
+    dock: top;
+    width: auto;
+    margin: 0 1;
+}
+
+#export-btn {
+    dock: top;
+    width: auto;
+    margin: 0 1;
+}
+
+/* Plans layout */
+#plans-layout {
+    height: 1fr;
+}

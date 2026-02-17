@@ -5,22 +5,100 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
+from functools import lru_cache
 
 from .models import (
     DailyStats,
-    FileChange,
+    GlobalStats,
     Plan,
     Project,
     Prompt,
     Session,
     SessionMessage,
+    shorten_project_dir,
 )
 
 CLAUDE_DIR = Path.home() / ".claude"
 
 
+# --- Cache layer ---
+
+class DataCache:
+    """In-memory cache for parsed data."""
+
+    def __init__(self):
+        self._history: list[Prompt] | None = None
+        self._stats: list[DailyStats] | None = None
+        self._projects: list[Project] | None = None
+        self._sessions: list[Session] | None = None
+        self._file_history: dict[str, list[str]] | None = None
+
+    def invalidate(self):
+        self._history = None
+        self._stats = None
+        self._projects = None
+        self._sessions = None
+        self._file_history = None
+
+    @property
+    def history(self) -> list[Prompt]:
+        if self._history is None:
+            self._history = _parse_history()
+        return self._history
+
+    @property
+    def stats(self) -> list[DailyStats]:
+        if self._stats is None:
+            self._stats = _parse_stats()
+        return self._stats
+
+    @property
+    def projects(self) -> list[Project]:
+        if self._projects is None:
+            self._projects = _discover_projects()
+        return self._projects
+
+    @property
+    def sessions(self) -> list[Session]:
+        if self._sessions is None:
+            self._sessions = _discover_all_sessions(self.history, self.projects)
+        return self._sessions
+
+    @property
+    def file_history(self) -> dict[str, list[str]]:
+        if self._file_history is None:
+            self._file_history = _parse_file_history()
+        return self._file_history
+
+
+cache = DataCache()
+
+
+# --- Public API (use cache) ---
+
 def parse_history() -> list[Prompt]:
-    """Parse history.jsonl into a list of prompts."""
+    return cache.history
+
+def parse_stats() -> list[DailyStats]:
+    return cache.stats
+
+def discover_projects() -> list[Project]:
+    return cache.projects
+
+def discover_all_sessions() -> list[Session]:
+    return cache.sessions
+
+def parse_file_history() -> dict[str, list[str]]:
+    return cache.file_history
+
+def refresh_data():
+    """Invalidate all caches and force reload."""
+    cache.invalidate()
+
+
+# --- Internal parsers ---
+
+def _parse_history() -> list[Prompt]:
     history_file = CLAUDE_DIR / "history.jsonl"
     if not history_file.exists():
         return []
@@ -45,8 +123,7 @@ def parse_history() -> list[Prompt]:
     return sorted(prompts, key=lambda p: p.timestamp, reverse=True)
 
 
-def parse_stats() -> list[DailyStats]:
-    """Parse stats-cache.json into daily stats."""
+def _parse_stats() -> list[DailyStats]:
     stats_file = CLAUDE_DIR / "stats-cache.json"
     if not stats_file.exists():
         return []
@@ -68,8 +145,7 @@ def parse_stats() -> list[DailyStats]:
     return sorted(stats, key=lambda s: s.date)
 
 
-def discover_projects() -> list[Project]:
-    """Discover all projects with their sessions."""
+def _discover_projects() -> list[Project]:
     projects_dir = CLAUDE_DIR / "projects"
     if not projects_dir.exists():
         return []
@@ -80,15 +156,7 @@ def discover_projects() -> list[Project]:
             continue
 
         name = entry.name
-        home_encoded = str(Path.home()).replace("/", "-")
-        display = (name
-                   .replace(home_encoded + "-Projects-", "")
-                   .replace(home_encoded + "-", "~/")
-                   .replace(home_encoded, "~/")
-                   .lstrip("-")
-                   .replace("~/-", "~/."))
-        if not display:
-            display = name
+        display = shorten_project_dir(name)
 
         jsonl_files = list(entry.glob("*.jsonl"))
         total_size = sum(f.stat().st_size for f in jsonl_files)
@@ -119,21 +187,14 @@ def discover_projects() -> list[Project]:
     return sorted(projects, key=lambda p: p.total_size, reverse=True)
 
 
-def discover_all_sessions() -> list[Session]:
-    """Discover all sessions across all projects."""
-    history = parse_history()
-
-    # Build a map of session_id -> prompts from history
+def _discover_all_sessions(history: list[Prompt], projects: list[Project]) -> list[Session]:
     session_prompts: dict[str, list[Prompt]] = {}
     for p in history:
         session_prompts.setdefault(p.session_id, []).append(p)
 
-    projects = discover_projects()
     sessions = []
-
     for proj in projects:
         for session in proj.sessions:
-            # Enrich with prompt data from history
             prompts = session_prompts.get(session.session_id, [])
             if prompts:
                 session.prompt_count = len(prompts)
@@ -176,7 +237,6 @@ def parse_session_transcript(jsonl_path: Path, max_messages: int = 500) -> list[
                     pass
 
             if msg_type == "user":
-                # User message - content can be string or list
                 content = ""
                 msg_data = data.get("message", {})
                 if isinstance(msg_data, dict):
@@ -189,7 +249,6 @@ def parse_session_transcript(jsonl_path: Path, max_messages: int = 500) -> list[
                                 content += part.get("text", "")
                             elif isinstance(part, str):
                                 content += part
-                # Filter out system/command content
                 clean = content.strip()
                 if clean and not clean.startswith("<command-"):
                     messages.append(SessionMessage(
@@ -262,6 +321,109 @@ def parse_session_transcript(jsonl_path: Path, max_messages: int = 500) -> list[
     return messages
 
 
+def search_conversations(query: str, max_results: int = 50) -> list[dict]:
+    """Deep search across all session transcripts."""
+    query_lower = query.lower()
+    results = []
+    sessions = discover_all_sessions()
+
+    for session in sessions:
+        if len(results) >= max_results:
+            break
+        if not session.jsonl_path or not session.jsonl_path.exists():
+            continue
+        # Only search sessions with data
+        if session.jsonl_size < 100:
+            continue
+
+        try:
+            with open(session.jsonl_path, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if len(results) >= max_results:
+                        break
+                    try:
+                        data = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    msg_type = data.get("type", "")
+                    text = ""
+
+                    if msg_type == "user":
+                        msg = data.get("message", {})
+                        if isinstance(msg, dict):
+                            c = msg.get("content", "")
+                            text = c if isinstance(c, str) else ""
+                    elif msg_type == "assistant":
+                        msg = data.get("message", {})
+                        if isinstance(msg, dict):
+                            parts = msg.get("content", [])
+                            if isinstance(parts, list):
+                                for p in parts:
+                                    if isinstance(p, dict) and p.get("type") == "text":
+                                        text += p.get("text", "") + " "
+
+                    if query_lower in text.lower():
+                        # Extract snippet around match
+                        idx = text.lower().find(query_lower)
+                        start = max(0, idx - 40)
+                        end = min(len(text), idx + len(query) + 40)
+                        snippet = text[start:end].replace("\n", " ").strip()
+                        if start > 0:
+                            snippet = "..." + snippet
+                        if end < len(text):
+                            snippet += "..."
+
+                        results.append({
+                            "session": session,
+                            "role": "user" if msg_type == "user" else "assistant",
+                            "snippet": snippet,
+                            "timestamp": data.get("timestamp", ""),
+                        })
+        except OSError:
+            continue
+
+    return results
+
+
+def export_conversation_markdown(session: Session) -> str:
+    """Export a session conversation as markdown."""
+    if not session.jsonl_path:
+        return ""
+
+    messages = parse_session_transcript(session.jsonl_path, max_messages=2000)
+    lines = [
+        f"# Conversation: {session.session_id}",
+        f"**Project:** {session.project_short}",
+        f"**Date:** {session.last_activity.strftime('%Y-%m-%d %H:%M') if session.last_activity else '?'}",
+        f"**Size:** {session.size_str}",
+        "",
+        "---",
+        "",
+    ]
+
+    for msg in messages:
+        ts = msg.timestamp.strftime("%H:%M:%S") if msg.timestamp else ""
+        if msg.role == "user":
+            lines.append(f"## You ({ts})")
+            lines.append("")
+            lines.append(msg.content)
+            lines.append("")
+        elif msg.role == "assistant":
+            lines.append(f"## Claude ({ts})")
+            lines.append("")
+            lines.append(msg.content)
+            lines.append("")
+        elif msg.role == "tool":
+            lines.append(f"> `{msg.content}`")
+            lines.append("")
+        elif msg.role == "system":
+            lines.append(f"> *{msg.content}*")
+            lines.append("")
+
+    return "\n".join(lines)
+
+
 def _summarize_tool_use(tool_name: str, tool_input: dict) -> str:
     """Create a short summary of a tool use."""
     if tool_name == "Read":
@@ -281,12 +443,10 @@ def _summarize_tool_use(tool_name: str, tool_input: dict) -> str:
         return f"Task: {tool_input.get('description', '?')}"
     elif tool_name == "WebSearch":
         return f"Search: {tool_input.get('query', '?')}"
-    else:
-        return f"{tool_name}()"
+    return f"{tool_name}()"
 
 
 def parse_plans() -> list[Plan]:
-    """Parse all plan files."""
     plans_dir = CLAUDE_DIR / "plans"
     if not plans_dir.exists():
         return []
@@ -304,15 +464,13 @@ def parse_plans() -> list[Plan]:
 
 
 def read_plan_content(plan: Plan) -> str:
-    """Read full content of a plan."""
     try:
         return plan.path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return "(Could not read plan)"
 
 
-def parse_file_history() -> dict[str, list[str]]:
-    """Parse file history - returns session_id -> list of file paths."""
+def _parse_file_history() -> dict[str, list[str]]:
     fh_dir = CLAUDE_DIR / "file-history"
     if not fh_dir.exists():
         return {}
@@ -329,32 +487,21 @@ def parse_file_history() -> dict[str, list[str]]:
     return result
 
 
-def get_global_stats() -> dict:
+def get_global_stats() -> GlobalStats:
     """Get aggregate stats for the dashboard."""
     stats = parse_stats()
     history = parse_history()
     projects = discover_projects()
 
-    total_messages = sum(s.message_count for s in stats)
-    total_sessions = sum(s.session_count for s in stats)
-    total_tools = sum(s.tool_call_count for s in stats)
-    total_prompts = len(history)
-    total_projects = len([p for p in projects if p.session_count > 0])
-    total_data = sum(p.total_size for p in projects)
-
-    # Date range
-    first_date = stats[0].date if stats else "?"
-    last_date = stats[-1].date if stats else "?"
-
-    return {
-        "total_messages": total_messages,
-        "total_sessions": total_sessions,
-        "total_tools": total_tools,
-        "total_prompts": total_prompts,
-        "total_projects": total_projects,
-        "total_data_bytes": total_data,
-        "first_date": first_date,
-        "last_date": last_date,
-        "daily_stats": stats,
-        "active_days": len(stats),
-    }
+    return GlobalStats(
+        total_messages=sum(s.message_count for s in stats),
+        total_sessions=sum(s.session_count for s in stats),
+        total_tools=sum(s.tool_call_count for s in stats),
+        total_prompts=len(history),
+        total_projects=len([p for p in projects if p.session_count > 0]),
+        total_data_bytes=sum(p.total_size for p in projects),
+        first_date=stats[0].date if stats else "?",
+        last_date=stats[-1].date if stats else "?",
+        active_days=len(stats),
+        daily_stats=stats,
+    )
