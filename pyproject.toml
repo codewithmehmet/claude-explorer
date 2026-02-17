@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claude-explorer"
+version = "1.0.0"
+description = "A revolutionary TUI for browsing Claude Code history and data"
+requires-python = ">=3.10"
+dependencies = [
+    "textual>=1.0.0",
+]
+
+[project.scripts]
+claude-explorer = "claude_explorer.app:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
