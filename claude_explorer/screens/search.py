@@ -6,8 +6,9 @@ from textual.app import ComposeResult
 from textual.containers import Container, Horizontal
 from textual.widgets import DataTable, Input, Static, Switch
 from textual.message import Message
+from textual.timer import Timer
 
-from ..data.parsers import parse_history, search_conversations
+from ..data.parsers import parse_history, search_conversations, discover_all_sessions
 from ..data.models import Prompt, Session
 
 
@@ -25,7 +26,9 @@ class SearchScreen(Container):
         self._prompts: list[Prompt] = []
         self._loaded = False
         self._deep_results: list[dict] = []
+        self._prompt_results: list[Prompt] = []
         self._deep_mode = False
+        self._debounce_timer: Timer | None = None
 
     def compose(self) -> ComposeResult:
         yield Static(
@@ -43,7 +46,6 @@ class SearchScreen(Container):
         table = self.query_one("#search-results-table", DataTable)
         table.cursor_type = "row"
         table.add_columns("Date", "Project", "Who", "Content")
-        # Style the controls
         controls = self.query_one("#search-controls")
         controls.styles.height = 3
         controls.styles.dock = "top"
@@ -63,12 +65,11 @@ class SearchScreen(Container):
             self._deep_mode = event.value
             status = self.query_one("#search-status", Static)
             if self._deep_mode:
-                status.update("[#f9e2af]Deep search: searches inside all conversations (slower)[/]")
+                status.update("[#f9e2af]Deep search: searches inside all conversations. Press Enter to search.[/]")
             else:
                 status.update("[#a6adc8]Prompt search: searches in user prompts only (fast)[/]")
-            # Re-trigger search if there's a query
             si = self.query_one("#search-input", Input)
-            if len(si.value.strip()) >= 3:
+            if len(si.value.strip()) >= 3 and not self._deep_mode:
                 self._do_search(si.value.strip())
 
     def on_input_changed(self, event: Input.Changed) -> None:
@@ -79,19 +80,37 @@ class SearchScreen(Container):
             table = self.query_one("#search-results-table", DataTable)
             table.clear()
             self._deep_results = []
+            self._prompt_results = []
             status = self.query_one("#search-status", Static)
-            status.update(f"[#a6adc8]Type at least 3 characters to search[/]")
+            status.update("[#a6adc8]Type at least 3 characters to search[/]")
             return
-        self._do_search(query)
+
+        if self._deep_mode:
+            # In deep mode, only search on Enter (see on_input_submitted)
+            status = self.query_one("#search-status", Static)
+            status.update("[#f9e2af]Press Enter to search conversations...[/]")
+        else:
+            # Debounce: cancel previous timer, start new 300ms delay
+            if self._debounce_timer:
+                self._debounce_timer.stop()
+            self._debounce_timer = self.set_timer(0.3, lambda: self._do_search(query))
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handle Enter key - trigger deep search."""
+        if event.input.id != "search-input":
+            return
+        query = event.value.strip()
+        if len(query) >= 3:
+            self._do_search(query)
 
     def _do_search(self, query: str) -> None:
         status = self.query_one("#search-status", Static)
         table = self.query_one("#search-results-table", DataTable)
         table.clear()
         self._deep_results = []
+        self._prompt_results = []
 
         if self._deep_mode:
-            # Deep search in conversations
             status.update("[#f9e2af]Searching conversations...[/]")
             results = search_conversations(query, max_results=100)
             self._deep_results = results
@@ -115,11 +134,11 @@ class SearchScreen(Container):
                 else "[#f38ba8]No matches in conversations[/]"
             )
         else:
-            # Fast prompt search
             self._ensure_loaded()
             results = [p for p in self._prompts if query.lower() in p.text.lower()]
+            self._prompt_results = results[:100]
 
-            for i, p in enumerate(results[:100]):
+            for i, p in enumerate(self._prompt_results):
                 date_str = p.timestamp.strftime("%Y-%m-%d %H:%M")
                 text_preview = p.text[:120].replace("\n", " ").strip()
                 table.add_row(date_str, p.project_short, "you", text_preview, key=f"p{i}")
@@ -146,13 +165,9 @@ class SearchScreen(Container):
                 session = self._deep_results[idx]["session"]
                 self.post_message(SearchSessionSelected(session))
         elif key.startswith("p"):
-            # Prompt search - find the session
             idx = int(key[1:])
-            self._ensure_loaded()
-            if idx < len(self._prompts):
-                prompt = self._prompts[idx]
-                # Find the session for this prompt
-                from ..data.parsers import discover_all_sessions
+            if idx < len(self._prompt_results):
+                prompt = self._prompt_results[idx]
                 sessions = discover_all_sessions()
                 session = next(
                     (s for s in sessions if s.session_id == prompt.session_id),

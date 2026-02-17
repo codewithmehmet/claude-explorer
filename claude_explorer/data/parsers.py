@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from functools import lru_cache
 
 from .models import (
     DailyStats,

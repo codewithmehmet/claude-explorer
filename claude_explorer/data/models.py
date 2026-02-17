@@ -21,15 +21,29 @@ def shorten_path(path: str) -> str:
 
 
 def shorten_project_dir(name: str) -> str:
-    """Convert a .claude project directory name to a readable name."""
+    """Convert a .claude project directory name to a readable name.
+
+    Project dirs encode the full path with dashes, e.g.:
+    'home-mehmet-Projects-foo-bar' -> 'foo-bar'
+    'home-mehmet--claude' -> '~/.claude'
+    'home-mehmet-Projects' -> 'Projects'
+    """
     prefix_projects = _HOME_ENCODED + "-Projects-"
     prefix_home = _HOME_ENCODED + "-"
+    # e.g. "home-mehmet-Projects-istiqami" -> "istiqami"
     if name.startswith(prefix_projects):
         result = name[len(prefix_projects):]
         return result if result else "Projects"
+    # e.g. "home-mehmet-Projects" (exact match, no trailing dash)
+    if name == _HOME_ENCODED + "-Projects":
+        return "Projects"
+    # e.g. "home-mehmet--claude" -> suffix is "-claude" -> "~/.claude"
     if name.startswith(prefix_home):
         suffix = name[len(prefix_home):]
-        return "~/" + suffix.replace("-", "/", 1) if suffix else "~"
+        if suffix.startswith("-"):
+            # Double dash encodes a dot directory: --claude -> .claude
+            return "~/" + "." + suffix[1:]
+        return "~/" + suffix if suffix else "~"
     if name == _HOME_ENCODED:
         return "~"
     return name
