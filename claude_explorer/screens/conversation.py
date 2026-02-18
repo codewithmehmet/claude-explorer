@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from textual.app import ComposeResult
 from textual.containers import Container
-from textual.widgets import Static, RichLog, Button
+from textual.widgets import Static, RichLog, Button, LoadingIndicator
 from textual.message import Message
+from textual.worker import Worker, WorkerState
 
-from ..data.models import Session, escape_markup
+from ..data.models import Session, SessionMessage, escape_markup
 from ..data.parsers import parse_session_transcript
 
 
@@ -23,6 +24,7 @@ class ConversationScreen(Container):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._current_session: Session | None = None
+        self._load_worker: Worker | None = None
 
     def compose(self) -> ComposeResult:
         yield Static(
@@ -32,7 +34,11 @@ class ConversationScreen(Container):
         )
         yield Button("< Back to Sessions", id="back-to-sessions", variant="default")
         yield Button("Export as Markdown", id="export-btn", variant="primary")
+        yield LoadingIndicator(id="conv-loading")
         yield RichLog(id="conversation-log", wrap=True, markup=True, highlight=True)
+
+    def on_mount(self) -> None:
+        self.query_one("#conv-loading").display = False
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back-to-sessions":
@@ -41,7 +47,12 @@ class ConversationScreen(Container):
             self.post_message(ExportRequested(self._current_session))
 
     def load_session(self, session: Session) -> None:
+        # Cancel any in-progress load
+        if self._load_worker and self._load_worker.state == WorkerState.RUNNING:
+            self._load_worker.cancel()
+
         self._current_session = session
+
         title = self.query_one("#conv-title", Static)
         title.update(
             f"[bold #cba6f7]  CONVERSATION[/] [#a6adc8]- "
@@ -56,7 +67,35 @@ class ConversationScreen(Container):
             log.write("[#f38ba8]No session data file found.[/]")
             return
 
-        messages = parse_session_transcript(session.jsonl_path)
+        # Show spinner, hide log
+        self.query_one("#conv-loading").display = True
+        log.display = False
+
+        self._load_worker = self.run_worker(
+            lambda: parse_session_transcript(session.jsonl_path),
+            thread=True,
+            name="load_conversation",
+        )
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        if event.worker is not self._load_worker:
+            return
+
+        if event.state == WorkerState.SUCCESS:
+            self._render_messages(event.worker.result)
+        elif event.state == WorkerState.ERROR:
+            self._show_error(f"Failed to load session: {event.worker.error}")
+        # CANCELLED: leave the spinner; a new worker will replace it
+
+    def _render_messages(self, messages: list[SessionMessage]) -> None:
+        self.query_one("#conv-loading").display = False
+        log = self.query_one("#conversation-log", RichLog)
+        log.display = True
+        log.clear()
+
+        session = self._current_session
+        if session is None:
+            return
 
         if not messages:
             log.write("[#a6adc8]No messages found in this session.[/]")
@@ -87,3 +126,10 @@ class ConversationScreen(Container):
             elif msg.role == "system":
                 log.write(f"  {ts_str}[#f9e2af]{escape_markup(msg.content)}[/]")
                 log.write("")
+
+    def _show_error(self, message: str) -> None:
+        self.query_one("#conv-loading").display = False
+        log = self.query_one("#conversation-log", RichLog)
+        log.display = True
+        log.clear()
+        log.write(f"[#f38ba8]{escape_markup(message)}[/]")

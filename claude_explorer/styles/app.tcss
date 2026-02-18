@@ -76,6 +76,20 @@ Footer {
     height: 1fr;
 }
 
+/* Todos */
+#todos-layout {
+    height: 1fr;
+}
+
+#todos-sessions-table {
+    width: 50;
+}
+
+#todos-detail-log {
+    width: 1fr;
+    padding: 1;
+}
+
 /* File History */
 #fh-layout {
     height: 1fr;

@@ -7,9 +7,11 @@ from textual.containers import Container, Horizontal
 from textual.widgets import Static
 
 from ..data.parsers import get_global_stats
+from ..data.models import format_size
 
 
 SPARKLINE_CHARS = " ▁▂▃▄▅▆▇█"
+HOUR_LABELS = [f"{h:02d}" for h in range(24)]
 
 
 def make_sparkline(values: list[int], width: int = 60) -> str:
@@ -37,6 +39,17 @@ def format_number(n: int) -> str:
     if n >= 1_000:
         return f"{n / 1_000:.1f}K"
     return str(n)
+
+
+def format_duration_ms(ms: int) -> str:
+    s = ms // 1000
+    if s < 60:
+        return f"{s}s"
+    m = s // 60
+    if m < 60:
+        return f"{m}m{s % 60:02d}s"
+    h = m // 60
+    return f"{h}h{m % 60:02d}m"
 
 
 class StatBox(Static):
@@ -109,6 +122,45 @@ class DashboardScreen(Container):
                 bar_len = int(d.message_count / max_msg * 30) if max_msg else 0
                 bar = "[#a6e3a1]" + "█" * bar_len + "[/]"
                 lines.append(f"  {d.date}  {bar} {d.message_count} msgs")
+
+        # Hourly activity heatmap
+        if gs.hour_counts:
+            lines.append("")
+            lines.append("[bold #cba6f7]Activity by Hour:[/]")
+            max_h = max(gs.hour_counts.values()) if gs.hour_counts else 1
+            heatmap = ""
+            for h in range(24):
+                count = gs.hour_counts.get(h, 0)
+                intensity = int(count / max_h * 8) if max_h else 0
+                char = SPARKLINE_CHARS[intensity]
+                heatmap += f"[#cba6f7]{char}[/]"
+            lines.append(f"  00h {''.join(heatmap)} 23h")
+            peak_hour = max(gs.hour_counts, key=gs.hour_counts.get)
+            lines.append(f"  Peak: [#f9e2af]{peak_hour:02d}h[/] ({gs.hour_counts[peak_hour]} sessions)")
+
+        # Model usage breakdown
+        if gs.model_usages:
+            lines.append("")
+            lines.append("[bold #cba6f7]Model Usage:[/]")
+            for mu in gs.model_usages:
+                total = mu.total_tokens
+                lines.append(
+                    f"  [#cba6f7]{mu.model_short:<12}[/] "
+                    f"in=[#89b4fa]{format_number(mu.input_tokens)}[/] "
+                    f"out=[#a6e3a1]{format_number(mu.output_tokens)}[/] "
+                    f"cache=[#f9e2af]{format_number(mu.cache_read_tokens)}[/] "
+                    f"total=[#cdd6f4]{format_number(total)}[/]"
+                )
+
+        # Longest session
+        if gs.longest_session_id:
+            dur = format_duration_ms(gs.longest_session_duration_ms)
+            lines.append("")
+            lines.append(
+                f"[bold #cba6f7]Longest Session:[/] "
+                f"[#f9e2af]{dur}[/] — "
+                f"[#a6adc8]{gs.longest_session_msgs} msgs | {gs.longest_session_id[:10]}...[/]"
+            )
 
         chart = Static("\n".join(lines), markup=True, id="activity-chart")
 

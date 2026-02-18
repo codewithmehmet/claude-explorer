@@ -22,22 +22,27 @@ Search across all your prompts instantly.
 
 | Screen | Key | Description |
 |--------|-----|-------------|
-| Dashboard | `d` | Activity sparklines, top stats, most active days |
+| Dashboard | `d` | Activity sparklines, hourly heatmap, model token usage, top stats |
 | Sessions | `s` | Browse all sessions with filtering by project/date |
-| Conversation | *(select a session)* | Full conversation viewer with syntax highlighting |
-| Search | `f` | Full-text search across all prompts |
+| Conversation | *(select a session)* | Full conversation viewer with thinking-block support |
+| Search | `f` | Full-text search across all prompts or deep conversation search |
 | Projects | `p` | Browse by project with session counts and sizes |
 | Plans | `l` | Read plan documents with markdown rendering |
 | Stats | `t` | Bar charts and detailed daily activity table |
+| File History | `h` | Files changed per session, colored by type |
+| Todos | `c` | Task lists from Claude sessions — open linked conversation with Enter |
+| Settings | `i` | Default model, hooks, permissions, MCP servers, per-project costs |
 
 ### Data Sources Parsed
 
 - `history.jsonl` - All user prompts
-- `projects/*/*.jsonl` - Full session transcripts
-- `stats-cache.json` - Daily activity statistics
+- `projects/*/*.jsonl` - Full session transcripts (incl. thinking blocks)
+- `stats-cache.json` - Daily activity, model token usage, hourly distribution, longest session
 - `plans/*.md` - Plan documents
 - `file-history/` - File changes per session
-- `settings.json` - Configuration
+- `todos/*.json` - Task lists per session
+- `settings.json` - Hooks, model, permissions
+- `~/.claude.json` - Per-project costs, MCP server config, allowed tools
 
 ## Installation
 
@@ -89,6 +94,10 @@ claude-explorer
 | `p` | Projects |
 | `l` | Plans |
 | `t` | Stats |
+| `h` | File History |
+| `c` | Todos |
+| `i` | Settings |
+| `r` | Refresh data |
 | `Esc` | Back |
 | `q` | Quit |
 

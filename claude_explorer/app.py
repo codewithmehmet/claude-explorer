@@ -20,6 +20,8 @@ from .screens.projects import ProjectsScreen, ProjectSelected
 from .screens.plans import PlansScreen
 from .screens.stats import StatsScreen
 from .screens.file_history import FileHistoryScreen
+from .screens.todos import TodosScreen, TodoSessionSelected
+from .screens.settings import SettingsScreen
 
 
 CSS_PATH = Path(__file__).parent / "styles" / "app.tcss"
@@ -49,6 +51,8 @@ class ClaudeExplorer(App):
         Binding("l", "switch_tab('plans')", "Plans", show=True),
         Binding("t", "switch_tab('stats')", "Stats", show=True),
         Binding("h", "switch_tab('file-history')", "Files", show=True),
+        Binding("c", "switch_tab('todos')", "Todos", show=True),
+        Binding("i", "switch_tab('settings')", "Settings", show=True),
         Binding("r", "refresh", "Refresh", show=True),
         Binding("escape", "go_back", "Back", show=True),
     ]
@@ -71,6 +75,10 @@ class ClaudeExplorer(App):
                 yield StatsScreen()
             with TabPane("File History", id="file-history"):
                 yield FileHistoryScreen()
+            with TabPane("Todos", id="todos"):
+                yield TodosScreen()
+            with TabPane("Settings", id="settings"):
+                yield SettingsScreen()
         yield Footer()
 
     def on_mount(self) -> None:
@@ -111,6 +119,10 @@ class ClaudeExplorer(App):
             self.query_one(FileHistoryScreen).load_data()
         elif active == "plans":
             self.query_one(PlansScreen).load_plans()
+        elif active == "todos":
+            self.query_one(TodosScreen).load_data()
+        elif active == "settings":
+            self.query_one(SettingsScreen).load_settings()
 
     def _open_session(self, session: Session) -> None:
         """Open a session in the conversation viewer."""
@@ -123,6 +135,9 @@ class ClaudeExplorer(App):
         self._open_session(event.session)
 
     def on_search_session_selected(self, event: SearchSessionSelected) -> None:
+        self._open_session(event.session)
+
+    def on_todo_session_selected(self, event: TodoSessionSelected) -> None:
         self._open_session(event.session)
 
     def on_project_selected(self, event: ProjectSelected) -> None:

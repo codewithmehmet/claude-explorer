@@ -7,13 +7,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .models import (
+    ClaudeJsonProject,
     DailyStats,
     GlobalStats,
+    ModelUsage,
     Plan,
     Project,
     Prompt,
     Session,
     SessionMessage,
+    SessionTodos,
+    TodoItem,
     shorten_project_dir,
 )
 
@@ -31,6 +35,13 @@ class DataCache:
         self._projects: list[Project] | None = None
         self._sessions: list[Session] | None = None
         self._file_history: dict[str, list[str]] | None = None
+        self._raw_stats_json: dict | None = None  # shared backing for model/hour/longest
+        self._model_usages: list[ModelUsage] | None = None
+        self._hour_counts: dict[int, int] | None = None
+        self._longest_session: dict | None = None
+        self._todos: list[SessionTodos] | None = None
+        self._settings: dict | None = None
+        self._claude_json_projects: list[ClaudeJsonProject] | None = None
 
     def invalidate(self):
         self._history = None
@@ -38,6 +49,13 @@ class DataCache:
         self._projects = None
         self._sessions = None
         self._file_history = None
+        self._raw_stats_json = None
+        self._model_usages = None
+        self._hour_counts = None
+        self._longest_session = None
+        self._todos = None
+        self._settings = None
+        self._claude_json_projects = None
 
     @property
     def history(self) -> list[Prompt]:
@@ -69,6 +87,48 @@ class DataCache:
             self._file_history = _parse_file_history()
         return self._file_history
 
+    @property
+    def raw_stats_json(self) -> dict:
+        if self._raw_stats_json is None:
+            self._raw_stats_json = _load_stats_json()
+        return self._raw_stats_json
+
+    @property
+    def model_usages(self) -> list[ModelUsage]:
+        if self._model_usages is None:
+            self._model_usages = _parse_model_usages(self.raw_stats_json)
+        return self._model_usages
+
+    @property
+    def hour_counts(self) -> dict[int, int]:
+        if self._hour_counts is None:
+            self._hour_counts = _parse_hour_counts(self.raw_stats_json)
+        return self._hour_counts
+
+    @property
+    def longest_session(self) -> dict:
+        if self._longest_session is None:
+            self._longest_session = _parse_longest_session(self.raw_stats_json)
+        return self._longest_session
+
+    @property
+    def todos(self) -> list[SessionTodos]:
+        if self._todos is None:
+            self._todos = _parse_todos()
+        return self._todos
+
+    @property
+    def settings(self) -> dict:
+        if self._settings is None:
+            self._settings = _parse_settings()
+        return self._settings
+
+    @property
+    def claude_json_projects(self) -> list[ClaudeJsonProject]:
+        if self._claude_json_projects is None:
+            self._claude_json_projects = _parse_claude_json_projects()
+        return self._claude_json_projects
+
 
 cache = DataCache()
 
@@ -89,6 +149,24 @@ def discover_all_sessions() -> list[Session]:
 
 def parse_file_history() -> dict[str, list[str]]:
     return cache.file_history
+
+def parse_model_usages() -> list[ModelUsage]:
+    return cache.model_usages
+
+def parse_hour_counts() -> dict[int, int]:
+    return cache.hour_counts
+
+def parse_longest_session() -> dict:
+    return cache.longest_session
+
+def parse_todos() -> list[SessionTodos]:
+    return cache.todos
+
+def parse_settings() -> dict:
+    return cache.settings
+
+def parse_claude_json_projects() -> list[ClaudeJsonProject]:
+    return cache.claude_json_projects
 
 def refresh_data():
     """Invalidate all caches and force reload."""
@@ -273,6 +351,16 @@ def parse_session_transcript(jsonl_path: Path, max_messages: int = 500) -> list[
                                         message_type="text",
                                     ))
                                     count += 1
+                                elif part.get("type") == "thinking":
+                                    thinking = part.get("thinking", "").strip()
+                                    if thinking:
+                                        messages.append(SessionMessage(
+                                            role="system",
+                                            content=f"[Thinking] {thinking[:300]}",
+                                            timestamp=ts,
+                                            message_type="thinking",
+                                        ))
+                                        count += 1
                                 elif part.get("type") == "tool_use":
                                     tool_name = part.get("name", "unknown")
                                     tool_input = part.get("input", {})
@@ -452,6 +540,114 @@ def _summarize_tool_use(tool_name: str, tool_input: dict) -> str:
     return f"{tool_name}()"
 
 
+def _load_stats_json() -> dict:
+    """Load stats-cache.json once, return raw dict."""
+    stats_file = CLAUDE_DIR / "stats-cache.json"
+    if not stats_file.exists():
+        return {}
+    try:
+        with open(stats_file, "r", encoding="utf-8", errors="replace") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
+def _parse_model_usages(data: dict) -> list[ModelUsage]:
+    usages = []
+    for model_id, vals in data.get("modelUsage", {}).items():
+        usages.append(ModelUsage(
+            model_id=model_id,
+            input_tokens=vals.get("inputTokens", 0),
+            output_tokens=vals.get("outputTokens", 0),
+            cache_read_tokens=vals.get("cacheReadInputTokens", 0),
+            cache_creation_tokens=vals.get("cacheCreationInputTokens", 0),
+        ))
+    return sorted(usages, key=lambda u: u.total_tokens, reverse=True)
+
+
+def _parse_hour_counts(data: dict) -> dict[int, int]:
+    raw = data.get("hourCounts", {})
+    return {int(h): int(c) for h, c in raw.items()}
+
+
+def _parse_longest_session(data: dict) -> dict:
+    return data.get("longestSession", {})
+
+
+def _parse_claude_json_projects() -> list[ClaudeJsonProject]:
+    claude_json = Path.home() / ".claude.json"
+    if not claude_json.exists():
+        return []
+    try:
+        data = json.loads(claude_json.read_text(encoding="utf-8", errors="replace"))
+    except (json.JSONDecodeError, OSError):
+        return []
+
+    result = []
+    for path, proj in data.get("projects", {}).items():
+        if not isinstance(proj, dict):
+            continue
+        mcp = list(proj.get("mcpServers", {}).keys())
+        result.append(ClaudeJsonProject(
+            path=path,
+            last_cost=proj.get("lastCost", 0.0) or 0.0,
+            last_duration_ms=proj.get("lastDuration", 0) or 0,
+            mcp_servers=mcp,
+            allowed_tools=proj.get("allowedTools", []),
+            has_trust=proj.get("hasTrustDialogAccepted", False),
+        ))
+    return sorted(result, key=lambda p: p.last_cost, reverse=True)
+
+
+def _parse_todos() -> list[SessionTodos]:
+    todos_dir = CLAUDE_DIR / "todos"
+    if not todos_dir.exists():
+        return []
+
+    result = []
+    for f in todos_dir.glob("*.json"):
+        # filename: {sessionId}-agent-{agentId}.json
+        stem = f.stem
+        parts = stem.split("-agent-")
+        if len(parts) != 2:
+            continue
+        session_id, agent_id = parts[0], parts[1]
+        try:
+            raw = json.loads(f.read_text(encoding="utf-8", errors="replace"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(raw, list) or not raw:
+            continue
+        items = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            items.append(TodoItem(
+                id=str(item.get("id", "")),
+                content=item.get("content", ""),
+                status=item.get("status", "pending"),
+                priority=item.get("priority", "normal"),
+            ))
+        if items:
+            result.append(SessionTodos(
+                session_id=session_id,
+                agent_id=agent_id,
+                items=items,
+            ))
+    return result
+
+
+def _parse_settings() -> dict:
+    settings_file = CLAUDE_DIR / "settings.json"
+    if not settings_file.exists():
+        return {}
+    try:
+        with open(settings_file, "r", encoding="utf-8", errors="replace") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, ValueError):
+        return {}
+
+
 def parse_plans() -> list[Plan]:
     plans_dir = CLAUDE_DIR / "plans"
     if not plans_dir.exists():
@@ -498,6 +694,7 @@ def get_global_stats() -> GlobalStats:
     stats = parse_stats()
     history = parse_history()
     projects = discover_projects()
+    longest = parse_longest_session()
 
     return GlobalStats(
         total_messages=sum(s.message_count for s in stats),
@@ -510,4 +707,9 @@ def get_global_stats() -> GlobalStats:
         last_date=stats[-1].date if stats else "?",
         active_days=len(stats),
         daily_stats=stats,
+        model_usages=parse_model_usages(),
+        hour_counts=parse_hour_counts(),
+        longest_session_id=longest.get("sessionId", ""),
+        longest_session_duration_ms=longest.get("duration", 0),
+        longest_session_msgs=longest.get("messageCount", 0),
     )

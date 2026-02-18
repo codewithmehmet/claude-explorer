@@ -132,6 +132,62 @@ class DailyStats:
 
 
 @dataclass
+class ModelUsage:
+    """Token usage statistics for a single model."""
+    model_id: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_creation_tokens: int = 0
+
+    @property
+    def model_short(self) -> str:
+        m = self.model_id
+        if "opus-4-6" in m:
+            return "Opus 4.6"
+        if "opus-4-5" in m:
+            return "Opus 4.5"
+        if "sonnet-4" in m:
+            return "Sonnet 4"
+        if "haiku-4" in m:
+            return "Haiku 4"
+        return m[:24]
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens + self.cache_read_tokens + self.cache_creation_tokens
+
+
+@dataclass
+class TodoItem:
+    """A single todo task item."""
+    id: str
+    content: str
+    status: str        # "pending" | "in_progress" | "completed"
+    priority: str = "normal"  # "high" | "normal" | "low"
+
+
+@dataclass
+class SessionTodos:
+    """Todo list for a session."""
+    session_id: str
+    agent_id: str
+    items: list[TodoItem] = field(default_factory=list)
+
+    @property
+    def pending(self) -> int:
+        return sum(1 for t in self.items if t.status == "pending")
+
+    @property
+    def in_progress(self) -> int:
+        return sum(1 for t in self.items if t.status == "in_progress")
+
+    @property
+    def completed(self) -> int:
+        return sum(1 for t in self.items if t.status == "completed")
+
+
+@dataclass
 class GlobalStats:
     """Aggregate stats for the dashboard."""
     total_messages: int = 0
@@ -144,6 +200,32 @@ class GlobalStats:
     last_date: str = "?"
     active_days: int = 0
     daily_stats: list[DailyStats] = field(default_factory=list)
+    model_usages: list[ModelUsage] = field(default_factory=list)
+    hour_counts: dict[int, int] = field(default_factory=dict)
+    longest_session_id: str = ""
+    longest_session_duration_ms: int = 0
+    longest_session_msgs: int = 0
+
+
+@dataclass
+class ClaudeJsonProject:
+    """Per-project settings from ~/.claude.json."""
+    path: str
+    last_cost: float = 0.0
+    last_duration_ms: int = 0
+    mcp_servers: list[str] = field(default_factory=list)
+    allowed_tools: list[str] = field(default_factory=list)
+    has_trust: bool = False
+
+    @property
+    def display_path(self) -> str:
+        return shorten_path(self.path)
+
+    @property
+    def cost_str(self) -> str:
+        if self.last_cost <= 0:
+            return ""
+        return f"${self.last_cost:.4f}"
 
 
 @dataclass
